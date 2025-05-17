@@ -1,0 +1,475 @@
+openapi: 3.0.3
+info:
+  title: Journal Microservice API
+  description: API for a journal app with authentication and journal management
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+    description: Local server
+paths:
+  /auth/login:
+    post:
+      summary: Authenticate user and get JWT
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  example: teacher1
+                password:
+                  type: string
+                  example: shan
+              required:
+                - username
+                - password
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        '400':
+          description: Missing username or password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/register:
+    post:
+      summary: Register a new user
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  example: teacher2
+                password:
+                  type: string
+                  example: shan123
+                role:
+                  type: string
+                  enum: [Teacher, Student]
+                  example: Teacher
+              required:
+                - username
+                - password
+                - role
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  user_id:
+                    type: integer
+        '400':
+          description: Invalid input or username exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/test:
+    get:
+      summary: Test protected route
+      tags:
+        - Authentication
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Protected route accessed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      username:
+                        type: string
+                      role:
+                        type: string
+                        enum: [Teacher, Student]
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /journals:
+    post:
+      summary: Create a journal
+      tags:
+        - Journals
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                description:
+                  type: string
+                  example: Math class activity
+                studentIds:
+                  type: array
+                  items:
+                    type: integer
+                  example: [2]
+                attachment:
+                  type: string
+                  format: binary
+                published_at:
+                  type: string
+                  format: date-time
+                  example: 2025-05-17T15:18:00.000Z
+              required:
+                - description
+      responses:
+        '201':
+          description: Journal created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  journal_id:
+                    type: integer
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (not a teacher)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /journals/{id}:
+    patch:
+      summary: Update a journal
+      tags:
+        - Journals
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Journal ID
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                description:
+                  type: string
+                  example: Updated math activity
+                studentIds:
+                  type: array
+                  items:
+                    type: integer
+                  example: [2]
+                attachment:
+                  type: string
+                  format: binary
+                published_at:
+                  type: string
+                  format: date-time
+                  example: 2025-05-17T15:18:00.000Z
+      responses:
+        '200':
+          description: Journal updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden (not a teacher)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Journal not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      summary: Delete a journal
+      tags:
+        - Journals
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Journal ID
+      responses:
+        '200':
+          description: Journal deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '403':
+          description: Forbidden (not a teacher)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Journal not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /journals/{id}/publish:
+    post:
+      summary: Publish a journal
+      tags:
+        - Journals
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Journal ID
+      responses:
+        '200':
+          description: Journal published
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '403':
+          description: Forbidden (not a teacher)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Journal not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /journals/feed/teacher:
+    get:
+      summary: Get teacher's journal feed
+      tags:
+        - Journals
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of teacher's journals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Journal'
+        '403':
+          description: Forbidden (not a teacher)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /journals/feed/student:
+    get:
+      summary: Get student's journal feed
+      tags:
+        - Journals
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of student's journals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Journal'
+        '403':
+          description: Forbidden (not a student)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+      required:
+        - error
+    Journal:
+      type: object
+      properties:
+        id:
+          type: integer
+        description:
+          type: string
+        teacher_id:
+          type: integer
+        published_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        teacher:
+          type: object
+          properties:
+            id:
+              type: integer
+            username:
+              type: string
+        JournalStudents:
+          type: array
+          items:
+            type: object
+            properties:
+              journal_id:
+                type: integer
+              student_id:
+                type: integer
+              student:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  username:
+                    type: string
+        Attachments:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              journal_id:
+                type: integer
+              type:
+                type: string
+                enum: [Image, Video, URL, PDF]
+              url:
+                type: string
+              created_at:
+                type: string
+                format: date-time
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
