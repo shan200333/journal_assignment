@@ -1,15 +1,15 @@
-const { Op } = require('sequelize');
 const { Journal, JournalStudent, Attachment, User } = require('../models/index');
+const { sendNotification } = require('../utils/notification.utils');
 
 const createJournal = async (req, res, next) => {
   try {
+    const { description, studentIds, published_at } = req.body;
     if (req.user.role !== 'Teacher') {
       const error = new Error('Only teachers can create journals');
       error.status = 403;
       throw error;
     }
 
-    const { description, studentIds, published_at } = req.body;
     const journal = await Journal.create({
       description,
       teacher_id: req.user.id,
@@ -28,6 +28,13 @@ const createJournal = async (req, res, next) => {
       await JournalStudent.bulkCreate(
         studentIds.map((id) => ({ journal_id: journal.id, student_id: id }))
       );
+      for (const studentId of studentIds) {
+        await sendNotification(
+          studentId,
+          journal.id,
+          `You were tagged in a new journal: ${description}`
+        );
+      }
     }
 
     if (req.file) {
@@ -50,38 +57,43 @@ const createJournal = async (req, res, next) => {
 
 const updateJournal = async (req, res, next) => {
   try {
+    const { id } = req.params;
+    const { description, studentIds, published_at } = req.body;
     if (req.user.role !== 'Teacher') {
       const error = new Error('Only teachers can update journals');
       error.status = 403;
       throw error;
     }
 
-    const { id } = req.params;
-    const { description, studentIds, published_at } = req.body;
-    const journal = await Journal.findOne({
-      where: { id, teacher_id: req.user.id },
-    });
+    const journal = await Journal.findByPk(id);
     if (!journal) {
-      const error = new Error('Journal not found or not owned by teacher');
+      const error = new Error('Journal not found');
       error.status = 404;
       throw error;
     }
 
-    await journal.update({ description, published_at: published_at || null });
+    if (description) journal.description = description;
+    if (published_at) journal.published_at = published_at;
+    await journal.save();
 
-    if (studentIds) {
+    if (studentIds && studentIds.length) {
+      const students = await User.findAll({
+        where: { id: studentIds, role: 'Student' },
+      });
+      if (students.length !== studentIds.length) {
+        const error = new Error('Invalid student IDs');
+        error.status = 400;
+        throw error;
+      }
       await JournalStudent.destroy({ where: { journal_id: id } });
-      if (studentIds.length) {
-        const students = await User.findAll({
-          where: { id: studentIds, role: 'Student' },
-        });
-        if (students.length !== studentIds.length) {
-          const error = new Error('Invalid student IDs');
-          error.status = 400;
-          throw error;
-        }
-        await JournalStudent.bulkCreate(
-          studentIds.map((sid) => ({ journal_id: id, student_id: sid }))
+      await JournalStudent.bulkCreate(
+        studentIds.map((studentId) => ({ journal_id: id, student_id: studentId }))
+      );
+      for (const studentId of studentIds) {
+        await sendNotification(
+          studentId,
+          journal.id,
+          `You were tagged in an updated journal: ${description}`
         );
       }
     }
@@ -107,18 +119,16 @@ const updateJournal = async (req, res, next) => {
 
 const deleteJournal = async (req, res, next) => {
   try {
+    const { id } = req.params;
     if (req.user.role !== 'Teacher') {
       const error = new Error('Only teachers can delete journals');
       error.status = 403;
       throw error;
     }
 
-    const { id } = req.params;
-    const journal = await Journal.findOne({
-      where: { id, teacher_id: req.user.id },
-    });
+    const journal = await Journal.findByPk(id);
     if (!journal) {
-      const error = new Error('Journal not found or not owned by teacher');
+      const error = new Error('Journal not found');
       error.status = 404;
       throw error;
     }
@@ -132,23 +142,22 @@ const deleteJournal = async (req, res, next) => {
 
 const publishJournal = async (req, res, next) => {
   try {
+    const { id } = req.params;
     if (req.user.role !== 'Teacher') {
       const error = new Error('Only teachers can publish journals');
       error.status = 403;
       throw error;
     }
 
-    const { id } = req.params;
-    const journal = await Journal.findOne({
-      where: { id, teacher_id: req.user.id },
-    });
+    const journal = await Journal.findByPk(id);
     if (!journal) {
-      const error = new Error('Journal not found or not owned by teacher');
+      const error = new Error('Journal not found');
       error.status = 404;
       throw error;
     }
 
-    await journal.update({ published_at: new Date() });
+    journal.published_at = new Date();
+    await journal.save();
     res.json({ message: 'Journal published' });
   } catch (err) {
     next(err);
@@ -158,7 +167,7 @@ const publishJournal = async (req, res, next) => {
 const getTeacherFeed = async (req, res, next) => {
   try {
     if (req.user.role !== 'Teacher') {
-      const error = new Error('Only teachers can view teacher feed');
+      const error = new Error('Only teachers can access this feed');
       error.status = 403;
       throw error;
     }
@@ -166,15 +175,25 @@ const getTeacherFeed = async (req, res, next) => {
     const journals = await Journal.findAll({
       where: { teacher_id: req.user.id },
       include: [
-        { model: User, as: 'teacher', attributes: ['id', 'username'] },
+        {
+          model: User,
+          as: 'teacher',
+          attributes: ['id', 'username'],
+        },
         {
           model: JournalStudent,
-          as: 'JournalStudents',
           include: [
-            { model: User, as: 'student', attributes: ['id', 'username'] },
+            {
+              model: User,
+              as: 'student',
+              attributes: ['id', 'username'],
+            },
           ],
         },
-        { model: Attachment, as: 'Attachments' },
+        {
+          model: Attachment,
+          attributes: ['id', 'journal_id', 'type', 'url', 'created_at'],
+        },
       ],
     });
 
@@ -187,27 +206,34 @@ const getTeacherFeed = async (req, res, next) => {
 const getStudentFeed = async (req, res, next) => {
   try {
     if (req.user.role !== 'Student') {
-      const error = new Error('Only students can view student feed');
+      const error = new Error('Only students can access this feed');
       error.status = 403;
       throw error;
     }
 
     const journals = await Journal.findAll({
       include: [
-        { model: User, as: 'teacher', attributes: ['id', 'username'] },
+        {
+          model: User,
+          as: 'teacher',
+          attributes: ['id', 'username'],
+        },
         {
           model: JournalStudent,
-          as: 'JournalStudents',
           where: { student_id: req.user.id },
           include: [
-            { model: User, as: 'student', attributes: ['id', 'username'] },
+            {
+              model: User,
+              as: 'student',
+              attributes: ['id', 'username'],
+            },
           ],
         },
-        { model: Attachment, as: 'Attachments' },
+        {
+          model: Attachment,
+          attributes: ['id', 'journal_id', 'type', 'url', 'created_at'],
+        },
       ],
-      where: {
-        published_at: { [Op.lte]: new Date() },
-      },
     });
 
     res.json(journals);
