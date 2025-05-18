@@ -1,6 +1,4 @@
-const { DataTypes } = require('sequelize');
-
-module.exports = (sequelize) => {
+module.exports = (sequelize, DataTypes) => {
   const Journal = sequelize.define('Journal', {
     id: {
       type: DataTypes.INTEGER,
@@ -14,10 +12,6 @@ module.exports = (sequelize) => {
     teacher_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: {
-        model: 'Users',
-        key: 'id',
-      },
     },
     published_at: {
       type: DataTypes.DATE,

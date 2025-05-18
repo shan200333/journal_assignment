@@ -1,30 +1,34 @@
 module.exports = (sequelize, DataTypes) => {
-  const Attachment = sequelize.define('Attachment', {
+  const Notification = sequelize.define('Notification', {
     id: {
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
     },
+    user_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
     journal_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
-    type: {
-      type: DataTypes.ENUM('Image', 'Video', 'URL', 'PDF'),
+    message: {
+      type: DataTypes.TEXT,
       allowNull: false,
     },
-    url: {
-      type: DataTypes.STRING(255),
-      allowNull: false,
+    is_read: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
     },
     created_at: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
     },
   }, {
-    tableName: 'Attachments',
+    tableName: 'Notifications',
     timestamps: false,
   });
 
-  return Attachment;
+  return Notification;
 };
